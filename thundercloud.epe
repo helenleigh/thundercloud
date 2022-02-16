@@ -1,0 +1,136 @@
+// Constellations 2022 Festival
+// Stormy Weather (temp title)
+// by Helen Leigh & Jerry Belich
+//
+// v1.0
+//  - Initial release.
+
+// Should stay constant (after init).
+var kDropLEDs = 10 // How many LEDs per drop of rain.
+var kDropLen = 30 // Total drop distance to fall (in LEDs).
+var kDropCount = floor(pixelCount / kDropLEDs) // How many raindrops (strands of 'dropLEDs') available.
+var kDropStartIdx //= [9, 10, 29, 30, 49] // Start index for each drop.
+var kDropEndIdx //= [0, 19, 20, 39, 40] // End index for each drop.
+var kDropDirStart = 1 // Alternate direction as you go through strands.
+var kDropSpeed = 0.03
+var kDropFade = 0.002
+var kDropDelay = 75.0 // Milliseconds
+
+// Used for animating.
+var pixels = array(pixelCount)
+var dropIdx = array(kDropCount) // Current leader index of each drop.
+var dropActive = array(kDropCount) // Is a drop animating.
+var dropOffset = array(kDropCount) // Shift the drop rendering so the trail continues.
+var dropDir = kDropDirStart
+var currDropSpeed = kDropSpeed
+var currDropDelay = kDropDelay
+
+function init() {
+  var oneIdx = array(kDropCount)
+  var twoIdx = array(kDropCount)
+  
+  var idx = 0
+  var toggle = false
+
+  // Generate start & end index arrays.
+  for (i = 0; i < kDropCount; i++) {
+     if (!toggle) {
+       twoIdx[i] = idx
+       idx += kDropLEDs - 1
+       oneIdx[i] = idx
+     } else {
+       idx++
+       oneIdx[i] = idx
+       idx += kDropLEDs - 1
+       twoIdx[i] = idx
+       idx++
+     }
+     toggle = !toggle
+  }
+  // If starting with negative index movement.
+  if (kDropDirStart == -1) {
+    kDropStartIdx = oneIdx
+    kDropEndIdx = twoIdx
+  } else { // Positive movement.
+    kDropStartIdx = twoIdx
+    kDropEndIdx = oneIdx
+  }
+  
+  // Initialize starting indexes.
+  dropIdx.forEach(function(element, index) {
+    dropIdx[index] = kDropStartIdx[index]
+  })
+}
+
+export function beforeRender(delta) {
+  var leadIdx
+  var trailIdx
+  
+  for (i = 0; i < kDropCount; i++) {
+    if (dropActive[i]) {
+      dropIdx[i] += dropDir * delta * currDropSpeed
+      // Positive direction.
+      if (dropDir == 1) {
+        leadIdx = floor(dropIdx[i])
+        if (leadIdx > kDropEndIdx[i]) {
+          dropOffset[i] = leadIdx - kDropEndIdx[i]
+        } else {
+          pixels[leadIdx] = 1
+        }
+        
+        for (j = leadIdx; j >= kDropStartIdx[i]; j--) {
+          if (j <= kDropEndIdx[i] && j >= kDropStartIdx[i]) {
+            pixels[j] -= delta * kDropFade
+            pixels[j] = max(0, pixels[j])
+          }
+        }
+      // Negative direction.
+      } else {
+        leadIdx = ceil(dropIdx[i])
+        if (leadIdx < kDropEndIdx[i]) {
+          dropOffset[i] = kDropEndIdx[i] - leadIdx
+        } else {
+          pixels[leadIdx] = 1
+        }
+        
+        for (j = leadIdx; j <= kDropStartIdx[i]; j++) {
+          if (j >= kDropEndIdx[i] && j <= kDropStartIdx[i]) {
+            pixels[j] -= delta * kDropFade
+            pixels[j] = max(0, pixels[j])
+          }
+        }
+      }
+      
+      if (dropOffset[i] >= kDropLen) {
+        dropOffset[i] = 0
+        dropIdx[i] = kDropStartIdx[i]
+        dropActive[i] = false
+      }
+    }
+    // Toggle between 1 & -1.
+    dropDir = dropDir == 1 ? -1 : 1
+  }
+  dropDir = kDropDirStart
+  
+  // Should a new drop fall?
+  currDropDelay -= delta
+  if (currDropDelay <= 0) {
+    // Pick a random drop index.
+    var nextDrop = floor( random( kDropCount ) )
+    // Is it already animating?
+    if (!dropActive[nextDrop]) {
+      dropActive[nextDrop] = true;
+    }
+    currDropDelay = kDropDelay
+  }
+}
+
+export function render(index) {
+  v = pixels[index]
+  v = v * v * v
+  
+  hsv(0.6, 0.6, v)
+}
+
+// Set up data arrays.
+init()
