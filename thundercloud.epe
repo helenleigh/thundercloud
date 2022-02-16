@@ -2,6 +2,10 @@
 // Stormy Weather (temp title)
 // by Helen Leigh & Jerry Belich
 //
+// v1.2
+//  - Integrated Lightning ZAP! pattern in.
+//  - Added speed slider for raindrops.
+//
 // v1.1
 //  - Added color picker, some cleanup.
 //
@@ -11,28 +15,78 @@
 // Init accelerometer.
 //export var accelerometer
 
-// Add a color picker control to make it easy to change the color of the drops.
-var kHue = 0
-var kSaturation = 0
+// Color picker for the lighting bolts.
+var kBoltHue = 0
+var kBoltSat = 0
 
-export function hsvPickerRainColor(_h, _s) {
-  kHue = _h
-  kSaturation = _s
+export function hsvPickerBoltColor(_h, _s) {
+  kBoltHue = _h
+  kBoltSat = _s
 }
 
-// Should stay constant (after init).
-var kDropLEDs = 10 // How many LEDs per drop of rain.
-var kDropLen = 30 // Total drop distance to fall (in LEDs).
-var kDropCount = floor(pixelCount / kDropLEDs) // How many raindrops (strands of 'dropLEDs') available.
-var kDropStartIdx // Start index for each drop.
-var kDropEndIdx // End index for each drop.
+// Add a slider control to select the speed of the lightning bolts.
+var kBoltFade = 15  // How fast each lightning bolt section fades out.
+var kBoltDelay = 15  // Determines the time between successive bolt segments.
+var kBoltResetDelay = 1000 // Determines the pause between complete lightning bolts.
+// _v from the slider will be in 0..1
+export function sliderBoltSpeed(_v) {
+  kBoltFade = 2 + _v * 13 // Fade will therefore be set to something between 2 and 15.
+  kBoltDelay = 15 + (1 - _v) * 15
+  kBoltResetDelay = 1000 + (1 - _v) * 2000
+}
+
+// Color picker for the raindrops.
+var kDropHue = 0
+var kDropSat = 0
+
+export function hsvPickerRainColor(_h, _s) {
+  kDropHue = _h
+  kDropSat = _s
+}
+
+// 0.03 is a nice value.
+var kDropSpeed = 0.03 // How fast the drops fall.
+export function sliderDropSpeed(_v) { 
+  kDropSpeed = map(_v, 0, 1, 0.005, 0.06)
+}
+
+// Map a value from an existing range to a new range.
+function map(x, in_min, in_max, out_min, out_max) {
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+// Pretend constants. Should not be manipulated (after init).
+
+// What chunk of the LEDs is lightning and what is rain?
+var kBoltFirst = true
+var kBoltLEDCount = 50
+var kBoltStartIdx
+var kBoltEndIdx
+
+// Drops config.
 var kDropDirStart = 1 // Alternate direction as you go through strands.
-var kDropSpeed = 0.03
 var kDropFade = 0.002
 var kDropDelay = 75.0 // Milliseconds
+var kDropLEDCount = pixelCount - kBoltLEDCount
+var kDropLEDs = 10 // How many LEDs per drop of rain.
+var kDropLen = 30 // Total drop distance to fall (in LEDs) so trails can fully render.
 
-// Used for animating.
+// Set up automatically.
+var kDropCount = floor((pixelCount - kBoltLEDCount) / kDropLEDs) // How many raindrops (strands of 'dropLEDs') available.
+var kDropStartIdx // Start index for each drop.
+var kDropEndIdx // End index for each drop.
+
+// Variables.
 var pixels = array(pixelCount)
+
+// Bolt vars.
+// Set up each bolt segment to be between 1/15th and 1/6th of the strip length
+var boltMin = floor(kBoltLEDCount / 15)
+var boltMax = ceil(kBoltLEDCount / 6)
+var boltTimer = 0
+var boltIdx = 0
+
+// Drop vars.
 var dropIdx = array(kDropCount) // Current leader index of each drop.
 var dropActive = array(kDropCount) // Is a drop animating.
 var dropOffset = array(kDropCount) // Shift the drop rendering so the trail continues.
@@ -41,10 +95,11 @@ var currDropSpeed = kDropSpeed
 var currDropDelay = kDropDelay
 
 function init() {
+  // Set up rain first.
   var oneIdx = array(kDropCount)
   var twoIdx = array(kDropCount)
   
-  var idx = 0
+  var idx = !kBoltFirst ? 0 : kBoltLEDCount
   var toggle = false
 
   // Generate start & end index arrays.
@@ -75,11 +130,50 @@ function init() {
   dropIdx.forEach(function(element, index) {
     dropIdx[index] = kDropStartIdx[index]
   })
+  
+  // Set up bolts.
+  kBoltStartIdx = kBoltFirst ? 0 : kDropLEDCount
+  kBoltEndIdx = kBoltStartIdx + kBoltLEDCount - 1
+  boltIdx = kBoltStartIdx
 }
 
 export function beforeRender(delta) {
+  updateBolts(delta)
+  updateDrops(delta)
+}
+
+function updateBolts(delta) {
+  // Most frames we are fading all pixels and counting down a timer
+  for (i = kBoltStartIdx; i <= kBoltEndIdx; i++) {
+    pixels[i] -= (pixels[i] * kBoltFade * (delta / 1000)) + (1 >> 16)
+  }
+  
+  // `timer` is the ms remaining before we ignite a new lightning bolt section
+  boltTimer -= delta
+  
+  if (boltTimer <= 0) {
+    // New lightning bolt segment's size, in pixels
+    boltSize = boltMin + random(boltMax - boltMin)
+    while (boltSize-- > 0 && boltIdx <= kBoltEndIdx) {
+      pixels[boltIdx++] = 1  // Fill these pixels bright white
+    }
+
+    boltTimer = random(kBoltDelay) + kBoltDelay / 5
+    // Squaring makes longer delays, and makes them rarer. A delayFactor of 15
+    // produces 9ms-324ms timers between successive bolt segments igniting.
+    boltTimer *= boltTimer 
+    
+    // If a lightning bolt has reached the end of the strip,
+    if (boltIdx > kBoltEndIdx) {
+      boltIdx = kBoltStartIdx
+      // Pause between bolts for 0.33-1.33 * resetDelayFactor milliseconds
+      boltTimer = random(kBoltResetDelay) + kBoltResetDelay / 3
+    }
+  }
+}
+
+function updateDrops(delta) {
   var leadIdx
-  var trailIdx
   
   for (i = 0; i < kDropCount; i++) {
     if (dropActive[i]) {
@@ -142,9 +236,18 @@ export function beforeRender(delta) {
 
 export function render(index) {
   v = pixels[index]
-  v = v * v * v
   
-  hsv(kHue, kSaturation, v)
+  var hue = kBoltHue
+  var sat = kBoltSat
+  
+  if ((kBoltFirst && (index >= kBoltLEDCount)) ||
+      (!kBoltFirst && index < kDropLEDCount)) {
+    v = v * v * v
+    hue = kDropHue
+    sat = kDropSat
+  }
+  
+  hsv(hue, sat, v)
 }
 
 // Set up data arrays.
