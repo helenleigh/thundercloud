@@ -2,15 +2,30 @@
 // Stormy Weather (temp title)
 // by Helen Leigh & Jerry Belich
 //
+// v1.1
+//  - Added color picker, some cleanup.
+//
 // v1.0
 //  - Initial release.
+
+// Init accelerometer.
+//export var accelerometer
+
+// Add a color picker control to make it easy to change the color of the drops.
+var kHue = 0
+var kSaturation = 0
+
+export function hsvPickerRainColor(_h, _s) {
+  kHue = _h
+  kSaturation = _s
+}
 
 // Should stay constant (after init).
 var kDropLEDs = 10 // How many LEDs per drop of rain.
 var kDropLen = 30 // Total drop distance to fall (in LEDs).
 var kDropCount = floor(pixelCount / kDropLEDs) // How many raindrops (strands of 'dropLEDs') available.
-var kDropStartIdx //= [9, 10, 29, 30, 49] // Start index for each drop.
-var kDropEndIdx //= [0, 19, 20, 39, 40] // End index for each drop.
+var kDropStartIdx // Start index for each drop.
+var kDropEndIdx // End index for each drop.
 var kDropDirStart = 1 // Alternate direction as you go through strands.
 var kDropSpeed = 0.03
 var kDropFade = 0.002
@@ -129,7 +144,7 @@ export function render(index) {
   v = pixels[index]
   v = v * v * v
   
-  hsv(0.6, 0.6, v)
+  hsv(kHue, kSaturation, v)
 }
 
 // Set up data arrays.
